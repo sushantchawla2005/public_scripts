@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cat /home/master/applications/*/conf/server.apache  | grep -i serveralias | sed 's/\#UI_Domain_alias//' | sed 's/[a-z]*.[a-z]*.[0-9]*.[0-9]*.cloudwaysapps.com//g' | sed 's/ServerAlias//' | awk {'print $NF}' | sed '/^[[:space:]]*$/d' > /tmp/domains.txt
+cat /home/master/applications/*/conf/server.apache  | grep -i serveralias | sed 's/\#UI_Domain_alias//' | sed 's/[a-z]*.[a-z]*.[0-9]*.[0-9]*.cloudwaysapps.com//g' | sed 's/ServerAlias//' | awk {'print $NF}' | sed '/^[[:space:]]*$/d' | sed 's/www.//' > /tmp/domains.txt
 
 while read DOMAIN
 do
