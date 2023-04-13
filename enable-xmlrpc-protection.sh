@@ -6,7 +6,7 @@ for A in $(ls -l /home/master/applications/| grep "^d" | awk '{print $NF}'); do 
 
 while read line
 do
-	grep xmlrpc /etc/nginx/sites-enabled/$line >> /dev/null 2>&1
+	grep xmlrpc /etc/nginx/sites-available/$line >> /dev/null 2>&1
 	if [[ $? -ne 0 ]]
 	then
 		echo "Adding XMLRPC to $line"
