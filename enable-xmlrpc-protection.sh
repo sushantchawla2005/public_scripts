@@ -10,7 +10,7 @@ do
 	if [[ $? -ne 0 ]]
 	then
 		echo "Adding XMLRPC to $line"
-		sed -i '/additional_server_conf/a include /etc/nginx/extras/xmlrpc_blocked.conf;' /etc/nginx/sites-enabled/$line
+		sed -i '/additional_server_conf/a include /etc/nginx/extras/xmlrpc_blocked.conf;' /etc/nginx/sites-available/$line
 	fi
 
 done < ./list.txt
