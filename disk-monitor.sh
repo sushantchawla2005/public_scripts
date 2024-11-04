@@ -1,7 +1,6 @@
 #!/bin/bash
 # Author: Sushant Chawla
-# Script to monitor all mounted partitions and 
-# send alert on Slack channel if it exceeds threshold value
+# Description: Monitor all mounted partitions and send alert on Slack channel if it exceeds threshold value
 
 # Slack webhook URL
 SLACK_WEBHOOK_URL=""
