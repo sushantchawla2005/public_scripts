@@ -54,10 +54,14 @@ Transient varibles: `${WP} transient list | wc -l`"
 echo -e "
 Memory Usage `${WP} eval "echo round( memory_get_usage() / 1048576, 2 );"` MB"
 
+# Application's database size
+echo -e "
+Database size of application: "
+${WP} db size --human-readable
 
 # Check Autoloaded options size
 echo -e "
-Autoloaded options size"
+Autoloaded options size:"
 ${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 10);"
 
 # Report slow plugins
