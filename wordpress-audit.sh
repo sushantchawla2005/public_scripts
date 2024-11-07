@@ -1,5 +1,5 @@
 #!/bin/bash
-# Author: Sushant Chawla
+# Author: Sushant Chawla & Afraz Ahmed
 # Description: Script to quickly audit a wordpress site
 ###################
 # Global Variables
@@ -22,49 +22,53 @@ fi
 GREP="/bin/grep"
 WC="/usr/bin/wc"
 MYSQL="/usr/bin/mysql"
+COLORCODE="\e[36m"
 
 echo -e " "
 # Check wordpress version
-echo -e "Your Current Wordpress Version is: `${WP} core version`"
+echo -e "${COLORCODE} Your Current Wordpress Version is: \e[0m `${WP} core version 2> /dev/null`"
 
 echo -e " "
 # Verify checksum
-echo -e "Wordpress checksum verification result is:"
-${WP} core verify-checksums
+echo -e "${COLORCODE} == Wordpress checksum verification result == \e[0m"
+${WP} core verify-checksums 2> /dev/null
 
+sleep 1
 # Check plugin status
 echo -e "
-Plugins Status:"
-${WP} plugin status
+${COLORCODE} == Plugins Status ==\e[0m"
+${WP} plugin status --no-color 2> /dev/null
 
 # Check Theme status
 echo -e "
-Themes Status:"
-${WP} theme status
+${COLORCODE} == Themes Status == \e[0m"
+${WP} theme status --no-color 2> /dev/null
+
+sleep 2
 
 # Check Cron status
 echo -e "
-Cron Status: `${WP} cron event list | ${GREP} -v "hook" | ${WC} -l`"
+${COLORCODE} Cron Status: \e[0m`${WP} cron event list 2> /dev/null | ${GREP} -v "hook" | ${WC} -l`"
 
 # Check transient variable
 echo -e "
-Transient varibles: `${WP} transient list | wc -l`"
+${COLORCODE} Transient varibles: \e[0m`${WP} transient list 2> /dev/null | wc -l`"
 
 # Check memory usage
 echo -e "
-Memory Usage `${WP} eval "echo round( memory_get_usage() / 1048576, 2 );"` MB"
+${COLORCODE} Memory Usage \e[0m`${WP} eval "echo round( memory_get_usage() / 1048576, 2 );" 2> /dev/null` MB"
 
 # Application's database size
 echo -e "
-Database size of application: "
-${WP} db size --human-readable
+${COLORCODE} == Database size of application: == \e[0m"
+${WP} db size --human-readable 2> /dev/null
 
 # Check Autoloaded options size
 echo -e "
-Autoloaded options size:"
-${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 10);"
+${COLORCODE} == Autoloaded options size: == \e[0m"
+${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 5);" 2> /dev/null
 
 # Report slow plugins
 echo -e "
-Slow Plugins List:"
+${COLORCODE} == Slow Plugins List: ==\e[0m"
 curl -s https://raw.githubusercontent.com/aphraz/cloudways/master/plugin-perf.sh | bash
