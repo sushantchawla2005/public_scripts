@@ -69,6 +69,7 @@ ${COLORCODE} == Autoloaded options size: == \e[0m"
 ${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 5);" 2> /dev/null
 
 # Run vulnerability check script
+echo -e ""
 read -p "Do you want to run Vulnerability check script? This may take some time (y/n): " choice <&1
 
 	if [ "$choice" == "y" ]; then
