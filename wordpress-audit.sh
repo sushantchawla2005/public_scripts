@@ -71,17 +71,16 @@ ${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option
 # Run vulnerability check script
 echo -e ""
 read -p "Do you want to run Vulnerability check script? This may take some time (y/n): " choice
-    case "$choice" in
-        y|Y )
-            curl -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
-            ;;
-        n|N )
-            echo "Skipping"
-            ;;
-        * )
-            echo "Invalid input. Please answer with y or n."
-            ask_user
-            ;;
+case "$choice" in
+    y|Y )
+        curl -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
+        ;;
+    n|N )
+        echo "Skipping"
+        ;;
+    * )
+        echo "Invalid input, exiting"
+        ;;
 esac
 
 # Report slow plugins
