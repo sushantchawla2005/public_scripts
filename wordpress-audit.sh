@@ -22,6 +22,7 @@ fi
 GREP="/bin/grep"
 WC="/usr/bin/wc"
 MYSQL="/usr/bin/mysql"
+TIMEOUT="/usr/bin/timeout 10"
 COLORCODE_CYAN="\e[36m"
 COLORCODE_RED="\e[31m"
 COLORCODE_GREEN="\e[32m"
@@ -29,18 +30,18 @@ COLORCODE_ORANGE="\e[38;5;214m"
 
 echo -e " "
 # Check wordpress version
-echo -e "${COLORCODE_CYAN} Your Current Wordpress Version is: \e[0m `${WP} core version 2> /dev/null`"
+echo -e "${COLORCODE_CYAN} Your Current Wordpress Version is: \e[0m `${TIMEOUT} ${WP} core version 2> /dev/null`"
 
 echo -e " "
 # Verify checksum
 echo -e "${COLORCODE_CYAN} == Wordpress checksum verification result == \e[0m"
-${WP} core verify-checksums 2> /dev/null
+${TIMEOUT} ${WP} core verify-checksums 2> /dev/null
 
 sleep 1
 # Check plugin status
 echo -e "
 ${COLORCODE_CYAN} == Plugins Status ==\e[0m"
-${WP} plugin status --no-color 2> /dev/null
+${TIMEOUT} ${WP} plugin status --no-color 2> /dev/null
 
 # Check plugins using most admin-ajax.php file
 echo -e "
@@ -51,7 +52,7 @@ echo -e "-------------------------------------------------------------"
 # Check Theme status
 echo -e "
 ${COLORCODE_CYAN} == Themes Status == \e[0m"
-${WP} theme status --no-color 2> /dev/null
+${TIMEOUT} ${WP} theme status --no-color 2> /dev/null
 
 echo -e "
 ${COLORCODE_ORANGE} == Themes using most admin-ajax.php calls ==\e[0m"
@@ -61,26 +62,26 @@ sleep 2
 echo -e "-------------------------------------------------------------"
 # Check Cron status
 echo -e "
-${COLORCODE_CYAN} Cron Status: \e[0m`${WP} cron event list 2> /dev/null | ${GREP} -v "hook" | ${WC} -l`"
+${COLORCODE_CYAN} Cron Status:\e[0m `${TIMEOUT} ${WP} cron event list 2> /dev/null | ${GREP} -v "hook" | ${WC} -l`"
 
 # Check transient variable
 echo -e "
-${COLORCODE_CYAN} Transient varibles: \e[0m`${WP} transient list 2> /dev/null | wc -l`"
+${COLORCODE_CYAN} Transient varibles:\e[0m `${TIMEOUT} ${WP} transient list 2> /dev/null | wc -l`"
 
 # Check memory usage
 echo -e "
-${COLORCODE_CYAN} Memory Usage \e[0m`${WP} eval "echo round( memory_get_usage() / 1048576, 2 );" 2> /dev/null` MB"
+${COLORCODE_CYAN} Memory Usage \e[0m` ${TIMEOUT} ${WP} eval "echo round( memory_get_usage() / 1048576, 2 );" 2> /dev/null` MB"
 
 sleep 1
 # Application's database size
 echo -e "
 ${COLORCODE_CYAN} == Database size of application: == \e[0m"
-${WP} db size --human-readable 2> /dev/null
+${TIMEOUT} ${WP} db size --human-readable 2> /dev/null
 
 # Check Autoloaded options size
 echo -e "
 ${COLORCODE_CYAN} == Autoloaded options size: == \e[0m"
-${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 5);" 2> /dev/null
+${TIMEOUT} ${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 5);" 2> /dev/null
 
 # Run vulnerability check script
 echo -e ""
