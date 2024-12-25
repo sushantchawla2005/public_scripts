@@ -103,7 +103,6 @@ read -p "Do you want to run Vulnerability check script? This may take some time 
             		echo -e "${COLORCODE_RED}On Debian/Ubuntu based servers command should be: sudo apt update && sudo apt install -y jq\e[0m"
 			echo -e "${COLORCODE_RED}On Redhat based servers command should be: sudo yum install -y jq\e[0m"
         	else
-        		echo -e "\e[32mjq is already installed.\e[0m"
         		curl -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
         	fi
 		}
