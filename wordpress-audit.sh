@@ -87,8 +87,6 @@ AUTOLOAD_SIZE=$(${TIMEOUT} ${WP} db query "SELECT ROUND(SUM(LENGTH(option_value)
 
 if [ "$AUTOLOAD_SIZE" -gt 1024 ]; then
     echo -e "${COLORCODE_RED}Autoloaded options size ${AUTOLOAD_SIZE} KB exceeds 1 MB, please consider trimming it below 1 MB for best performance.\e[0m"
-else
-    echo -e "Autoloaded options size: $autoload_size KB"
 fi
 
 # Run vulnerability check script
