@@ -83,6 +83,14 @@ echo -e "
 ${COLORCODE_CYAN} == Autoloaded options size: == \e[0m"
 ${TIMEOUT} ${WP} db query "SELECT 'autoloaded data in KiB' as name, ROUND(SUM(LENGTH(option_value))/ 1024) as value FROM ${PREFIX}options WHERE autoload='yes' UNION SELECT 'autoloaded data count', count(*) FROM ${PREFIX}options WHERE autoload='yes' UNION (SELECT option_name, length(option_value) FROM ${PREFIX}options WHERE autoload='yes' ORDER BY length(option_value) DESC LIMIT 5);" 2> /dev/null
 
+AUTOLOAD_SIZE=$(${TIMEOUT} ${WP} db query "SELECT ROUND(SUM(LENGTH(option_value))/1024) AS autoloaded_size_kb FROM ${PREFIX}options WHERE autoload='yes';" --skip-column-names --raw 2> /dev/null)
+
+if [ "$AUTOLOAD_SIZE" -gt 1024 ]; then
+    echo -e "${COLORCODE_RED}Autoloaded options size ${AUTOLOAD_SIZE} exceeds 1 MB, please consider trimming it below 1 MB for best performance.\e[0m"
+else
+    echo -e "Autoloaded options size: $autoload_size KB"
+fi
+
 # Run vulnerability check script
 echo -e ""
 read -p "Do you want to run Vulnerability check script? This may take some time (y/n): " choice <&1
