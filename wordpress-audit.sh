@@ -16,7 +16,7 @@ fi
 if [ -f ./wp-config.php ]; then
     PREFIX=$(grep "table_prefix" ./wp-config.php | awk '{print $3}' | tr -d \'\;)
 else
-    PREFIX=$(wp db prefix)
+    PREFIX=$(${WP} db prefix)
 fi
 
 GREP="/bin/grep"
