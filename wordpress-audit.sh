@@ -105,7 +105,7 @@ read -p "Do you want to run Vulnerability check script? This may take some time 
             		echo -e "${COLORCODE_RED}On Debian/Ubuntu based servers command should be: sudo apt update && sudo apt install -y jq\e[0m"
 			echo -e "${COLORCODE_RED}On Redhat based servers command should be: sudo yum install -y jq\e[0m"
         	else
-        		curl -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
+        		curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
         	fi
 		}
 		# Call the function to check for jq package
@@ -115,4 +115,4 @@ read -p "Do you want to run Vulnerability check script? This may take some time 
 # Report slow plugins
 echo -e "
 ${COLORCODE_CYAN} == Slow Plugins List: ==\e[0m"
-curl -s https://raw.githubusercontent.com/aphraz/cloudways/master/plugin-perf.sh | bash
+curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/aphraz/cloudways/master/plugin-perf.sh | bash
