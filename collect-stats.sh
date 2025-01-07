@@ -2,8 +2,7 @@
 
 DATE=$(/bin/date +%F--%H-%M)
 # Define output file
-OUTPUT_FILE="/root/innodb_lock_debug.log"
-
+OUTPUT_FILE="/root/server-stats.log"
 
 # Clear previous log content
 echo "Extracting useful information from server..." > "$OUTPUT_FILE"
@@ -14,9 +13,11 @@ echo "== ${DATE} ==" >> ${OUTPUT_FILE}
 mysql -e "SHOW ENGINE INNODB STATUS\G;" >> ${OUTPUT_FILE}
 
 # Run the processlist command
+echo -e "######## PROCESS LIST ########" >> ${OUTPUT_FILE}
 mysql -e "show processlist;" >> ${OUTPUT_FILE}
 
 # Run iostat
+echo -e "######## DISK STATUS ########" >> ${OUTPUT_FILE}
 iostat -x >> ${OUTPUT_FILE}
 
 # Notify user
