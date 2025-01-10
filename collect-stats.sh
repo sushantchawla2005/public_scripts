@@ -12,6 +12,11 @@ echo "== ${DATE} ==" >> ${OUTPUT_FILE}
 # Run the SHOW ENGINE INNODB STATUS command
 mysql -e "SHOW ENGINE INNODB STATUS\G;" >> ${OUTPUT_FILE}
 
+# Check locked queries
+mysql -e "SHOW GLOBAL STATUS LIKE 'Innodb_row_lock%';" >> ${OUTPUT_FILE}
+mysql -e "SELECT * FROM information_schema.innodb_locks;" >> ${OUTPUT_FILE}
+mysql -e "SELECT * FROM information_schema.innodb_lock_waits;" >> ${OUTPUT_FILE}
+
 # Run the processlist command
 echo -e "######## PROCESS LIST ########" >> ${OUTPUT_FILE}
 mysql -e "show processlist;" >> ${OUTPUT_FILE}
