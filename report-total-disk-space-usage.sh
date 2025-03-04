@@ -3,7 +3,7 @@
 # Define paths
 WEBROOT_DIR="/home/master/applications"
 DB_DIR="/var/lib/mysql"
-IP=$(/bin/curl -s -4 ifconfig.me)
+IP=$(/usr/bin/curl -s -4 ifconfig.me)
 
 # Check if required directories exist
 if [[ ! -d "$WEBROOT_DIR" ]]; then
