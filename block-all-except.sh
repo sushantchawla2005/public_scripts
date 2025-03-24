@@ -2,7 +2,7 @@
 
 # Usage help
 if [ "$#" -eq 0 ]; then
-    echo "❌ Usage: $0 US CA IN PK"
+    echo "Usage: $0 US CA IN PK"
     echo "Pass the list of allowed country codes as arguments (ISO Alpha-2 codes)"
     exit 1
 fi
