@@ -20,12 +20,6 @@ ALL_COUNTRIES=(AF AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ
 
 echo "⚙️ Whitelisting allowed countries: ${ALLOWED[*]}..."
 
-# Whitelist allowed countries (skip if already whitelisted)
-for country in "${ALLOWED[@]}"; do
-    echo "✅ Whitelisting: $country"
-    imunify360-agent whitelist country add "$country"
-done
-
 # Fetch currently whitelisted countries
 EXISTING_WHITELIST=($(imunify360-agent whitelist country list 2>/dev/null | awk '{print $1}' | sort | uniq))
 
