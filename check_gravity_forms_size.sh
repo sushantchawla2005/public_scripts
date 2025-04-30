@@ -14,9 +14,9 @@ for app_path in /home/master/applications/*; do
             # Get disk usage (human-readable)
             size=$(du -sh "$upload_path" 2>/dev/null | cut -f1)
 
-            # Extract domain from last line of apache config
+            # Extract domain from last line of apache config (trim comments and extract last field)
             if [[ -f "$apache_conf" ]]; then
-                domain=$(tail -n 1 "$apache_conf" | awk '{print $NF}')
+                domain=$(tail -n 1 "$apache_conf" | sed 's/#.*//' | awk '{print $NF}')
             else
                 domain="(no config)"
             fi
