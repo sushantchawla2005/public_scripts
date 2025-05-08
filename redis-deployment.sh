@@ -75,7 +75,17 @@ done < "$IP_LIST_FILE"
 
 # ====== RELOAD SHOREWALL and IMUNIFY360 ======
 echo "Reloading Shorewall and Imunify360 firewalls..."
-sudo /sbin/shorewall update && sudo /etc/init.d/shorewall restart && sudo /usr/bin/imunify360-agent reload-lists
+
+if sudo /sbin/shorewall check > /dev/null 2>&1; then
+    echo "Shorewall config is valid. Proceeding with reload..."
+    sudo /sbin/shorewall update > /dev/null 2>&1 && sudo /etc/init.d/shorewall restart > /dev/null 2>&1
+else
+    echo "Shorewall config check failed. Aborting reload."
+    exit 1
+fi
+
+# Reload Imunify360 firewall lists silently
+sudo /usr/bin/imunify360-agent reload-lists > /dev/null 2>&1
 
 echo "All tasks completed successfully."
 echo "==================== Completed @ $(date) ===================="
