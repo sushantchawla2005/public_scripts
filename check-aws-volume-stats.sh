@@ -37,13 +37,15 @@ for VOL_ID in $VOLUME_IDS; do
   VOLUME_DETAILS=$(aws ec2 describe-volumes \
     --volume-ids "$VOL_ID" \
     --region "$REGION" --profile "$PROFILE" \
-    --query "Volumes[0].[VolumeType,Size]" --output text)
+    --query "Volumes[0].[VolumeType,Size,Iops,Throughput]" --output text)
 
   VOLUME_TYPE=$(echo "$VOLUME_DETAILS" | awk '{print $1}')
   VOLUME_SIZE=$(echo "$VOLUME_DETAILS" | awk '{print $2}')
+  VOLUME_IOPS=$(echo "$VOLUME_DETAILS" | awk '{print $3}')
+  VOLUME_TP=$(echo "$VOLUME_DETAILS" | awk '{print $4}')
 
   echo ""
-  echo "📊 Top 5 Throughput (MiB/s) for Volume: $VOL_ID ($VOLUME_TYPE, ${VOLUME_SIZE}GiB)"
+  echo "📊 Top 5 Throughput (MiB/s) for Volume: $VOL_ID ($VOLUME_TYPE, ${VOLUME_SIZE}GiB, IOPS: $VOLUME_IOPS, TP: ${VOLUME_TP:-N/A}MiB/s)"
 
   aws cloudwatch get-metric-data \
     --metric-data-queries "[
@@ -98,7 +100,7 @@ for VOL_ID in $VOLUME_IDS; do
   ' /tmp/cloudwatch_throughput_$VOL_ID.json
 
   echo ""
-  echo "📈 Top 5 IOPS for Volume: $VOL_ID ($VOLUME_TYPE, ${VOLUME_SIZE}GiB)"
+  echo "📈 Top 5 IOPS for Volume: $VOL_ID ($VOLUME_TYPE, ${VOLUME_SIZE}GiB, IOPS: $VOLUME_IOPS, TP: ${VOLUME_TP:-N/A}MiB/s)"
 
   aws cloudwatch get-metric-data \
     --metric-data-queries "[
