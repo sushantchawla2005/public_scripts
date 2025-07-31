@@ -22,7 +22,7 @@ send_slack() {
 }
 
 # Notify starting of server scaling
-send_slack "🛠️ Starting server scaling for email: $EMAIL, server ID: $SERVER_ID, instance type: $INSTANCE_TYPE"
+send_slack "🛠️ Starting server scaling for email: $EMAIL, server ID: $SERVER_ID, instance type: $INSTANCE_TYPE. It may take upto 10 minutes to complete the operation."
 
 # Authenticate and get access token
 ACCESS_TOKEN=$(curl -s -X POST "https://api.cloudways.com/api/v1/oauth/access_token" \
