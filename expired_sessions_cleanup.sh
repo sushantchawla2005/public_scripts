@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ===== CONFIG =====
-WP_PATH="${WP_PATH:-/path/to/wordpress}"   # must be overridden when calling
+WP_PATH="."
 BATCH_SIZE="${BATCH_SIZE:-20000}"
 
 # ===== Initialize WP-CLI =====
