@@ -1,82 +1,78 @@
 #!/usr/bin/env bash
+# bulk-create-wordpress-users.sh  (cd-based; no --path)
 set -euo pipefail
 
-CSV_FILE="${1:-/tmp/users.csv}"
+CSV="${1:-}"
+[[ -n "$CSV" ]] || { echo "Usage: $0 /path/to/users.csv"; exit 1; }
+[[ -s "$CSV" ]] || { echo "ERROR: CSV missing or empty: $CSV"; exit 1; }
 
 APP_ROOT="/home/master/applications"
+[[ -d "$APP_ROOT" ]] || { echo "ERROR: $APP_ROOT not found"; exit 1; }
 
-# WP-CLI
+# Make sure wp is reachable; allow root if script is run via sudo
 PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 command -v wp >/dev/null 2>&1 || { echo "ERROR: wp not found in PATH"; exit 1; }
-WP="wp --allow-root --skip-themes --skip-plugins"
+export WP_CLI_ALLOW_ROOT=1
+WP="wp --skip-themes --skip-plugins"
 
-# Feature-detect email flags (older WP-CLI lacks these)
-CREATE_NOEMAIL=""   # for `wp user create`
-UPDATE_NOEMAIL=""   # for `wp user update`
-
-if $WP help user create 2>/dev/null | grep -q -- '--send-email'; then
-  CREATE_NOEMAIL="--send-email=false"
-fi
-if $WP help user update 2>/dev/null | grep -q -- '--skip-email'; then
-  UPDATE_NOEMAIL="--skip-email"
-fi
-
-shopt -s nullglob
-
-[[ -s "$CSV_FILE" ]] || { echo "ERROR: CSV not found or empty: $CSV_FILE"; exit 1; }
-
-# Clean CSV: strip CRLF, drop blanks/headers; expect username,email,role[,password]
+# Normalize CSV (strip CRLF, blank lines)
 TMP_CSV="$(mktemp)"
-tr -d '\r' <"$CSV_FILE" | awk -F, 'NF>=3 && $2 ~ /@/ && tolower($1)!="username"' >"$TMP_CSV"
+trap 'rm -f "$TMP_CSV"' EXIT
+tr -d '\r' < "$CSV" | awk 'NF>0' > "$TMP_CSV"
 
-# Discover WP installs
-mapfile -t WP_PATHS < <(for d in "$APP_ROOT"/*/public_html; do
-  [[ -f "$d/wp-config.php" ]] && echo "$d"
+# Find WordPress installs
+mapfile -t WP_DIRS < <(for d in "$APP_ROOT"/*/public_html; do
+  [[ -f "$d/wp-config.php" ]] && echo "$d";
 done)
-echo "Found ${#WP_PATHS[@]} WordPress install(s) under $APP_ROOT."
 
-for wp_path in "${WP_PATHS[@]}"; do
-  app="$(basename "$(dirname "$wp_path")")"
+echo "Found ${#WP_DIRS[@]} WordPress install(s) under $APP_ROOT."
 
-  if ! $WP --path="$wp_path" core is-installed >/dev/null 2>&1; then
+for dir in "${WP_DIRS[@]}"; do
+  app="$(basename "$(dirname "$dir")")"
+
+  if ! (cd "$dir" && $WP core is-installed >/dev/null 2>&1); then
     echo "Skip $app: not a WP install"
     continue
   fi
 
-  if $WP --path="$wp_path" core is-installed --network >/dev/null 2>&1; then
+  if (cd "$dir" && $WP core is-installed --network >/dev/null 2>&1); then
     echo "=== $app (multisite) ==="
-    while IFS=, read -r USERNAME EMAIL ROLE PASSWORD; do
-      [[ -z "$USERNAME" || -z "$EMAIL" || -z "$ROLE" ]] && continue
+    # Ensure network user exists; then set role on each site
+    while IFS=, read -r login email role pass; do
+      # skip header or bad lines
+      [[ -z "$login" || -z "$email" || -z "$role" ]] && continue
+      [[ "$login" == "Username" || "$email" == "Email" || "$role" == "Role" ]] && continue
 
-      if ! $WP --path="$wp_path" user get "$USERNAME" >/dev/null 2>&1; then
-        $WP --path="$wp_path" user create "$USERNAME" "$EMAIL" ${PASSWORD:+--user_pass="$PASSWORD"} ${CREATE_NOEMAIL:+$CREATE_NOEMAIL}
-        echo "  + created network user: $USERNAME"
+      if ! (cd "$dir" && $WP user get "$login" >/dev/null 2>&1); then
+        (cd "$dir" && $WP user create "$login" "$email" ${pass:+--user_pass="$pass"}) >/dev/null
+        echo "  [OK] network user created: $login"
       else
-        [[ -n "${PASSWORD:-}" ]] && $WP --path="$wp_path" user update "$USERNAME" --user_pass="$PASSWORD" ${UPDATE_NOEMAIL:+$UPDATE_NOEMAIL} >/dev/null
-        echo "  = network user exists: $USERNAME"
+        [[ -n "${pass:-}" ]] && (cd "$dir" && $WP user update "$login" --user_pass="$pass" >/dev/null)
+        echo "  [OK] network user exists: $login"
       fi
 
-      while IFS= read -r URL; do
-        $WP --path="$wp_path" --url="$URL" user set-role "$USERNAME" "$ROLE" >/dev/null || true
-        echo "    ↳ $ROLE @ $URL"
-      done < <($WP --path="$wp_path" site list --field=url)
+      # Assign role on each site in the network
+      while IFS= read -r url; do
+        (cd "$dir" && $WP --url="$url" user set-role "$login" "$role") >/dev/null || true
+        echo "    ↳ role=$role @ $url"
+      done < <(cd "$dir" && $WP site list --field=url)
     done < "$TMP_CSV"
 
   else
     echo "=== $app (single) ==="
-    while IFS=, read -r USERNAME EMAIL ROLE PASSWORD; do
-      [[ -z "$USERNAME" || -z "$EMAIL" || -z "$ROLE" ]] && continue
+    while IFS=, read -r login email role pass; do
+      [[ -z "$login" || -z "$email" || -z "$role" ]] && continue
+      [[ "$login" == "Username" || "$email" == "Email" || "$role" == "Role" ]] && continue
 
-      if $WP --path="$wp_path" user get "$USERNAME" >/dev/null 2>&1; then
-        $WP --path="$wp_path" user update "$USERNAME" --role="$ROLE" ${PASSWORD:+--user_pass="$PASSWORD"} ${UPDATE_NOEMAIL:+$UPDATE_NOEMAIL}
-        echo "  = updated $USERNAME"
+      if (cd "$dir" && $WP user get "$login" >/dev/null 2>&1); then
+        (cd "$dir" && $WP user update "$login" --role="$role" ${pass:+--user_pass="$pass"}) >/dev/null
+        echo "  [OK] updated $login"
       else
-        $WP --path="$wp_path" user create "$USERNAME" "$EMAIL" --role="$ROLE" ${PASSWORD:+--user_pass="$PASSWORD"} ${CREATE_NOEMAIL:+$CREATE_NOEMAIL}
-        echo "  + created $USERNAME"
+        (cd "$dir" && $WP user create "$login" "$email" --role="$role" ${pass:+--user_pass="$pass"}) >/dev/null
+        echo "  [OK] created $login"
       fi
     done < "$TMP_CSV"
   fi
 done
 
-rm -f "$TMP_CSV"
 echo "Done."
