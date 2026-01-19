@@ -135,6 +135,11 @@ else
     run_audit "$PRIMARY_SITE"
 fi
 
+# 404 error check
+echo -e "
+${COLORCODE_CYAN}== Checking 404 errors count/ratio for today and yesterday: ==${COLORCODE_RESET}"
+curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-404-responses.sh | bash -s 10 ../logs
+
 # Run Vulnerability Check and Slow Plugin Check (Only on Primary Site)
 echo -e "
 ${COLORCODE_ORANGE}🐢 Running Slow Plugin & Vulnerability Checks on Primary Site: ${COLORCODE_RESET}${PRIMARY_SITE}"
