@@ -9,7 +9,7 @@ set -euo pipefail
 #   $2 = app_id    (optional, numeric)
 #
 # Auto-detect:
-#   server_id: from hostname (1500208.cloudwaysapps.com or 1500208-xxxx.cloudwaysapps.com)
+#   server_id: from hostname (1234567.cloudwaysapps.com or 1234567-xxxx.cloudwaysapps.com)
 #   app_folder: from pwd using either:
 #       /home/<server_id>.cloudwaysapps.com/<app_folder>/...
 #       /home/master/applications/<app_folder>/...
@@ -19,7 +19,7 @@ set -euo pipefail
 #       <base>/conf/server.apache
 #       <base>/conf/server.conf
 #     by extracting last numeric chunk in ServerName/ServerAlias:
-#       wordpress-1500208-5739215.cloudwaysapps.com -> 5739215
+#       wordpress-1234567-9876543.cloudwaysapps.com -> 9876543
 #
 # Requires env vars:
 #   CW_EMAIL, CW_API_KEY
