@@ -151,6 +151,13 @@ if [ "$choice" == "y" ]; then
     curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/check-vulnerability.sh | bash
 fi
 
+# Image Optimization
+echo -e ""
+read -p "Do you want to run image optimization in current folder, it will use tools like oxipng and jpegoptim to optimize images? (y/n): " choice <&1
+if [ "$choice" == "y" ]; then
+    curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/optimize-images.sh | bash
+fi
+
 # Slow Plugins Check (Only on primary site)
 echo -e "
 ${COLORCODE_CYAN}== Slow Plugins List: ==${COLORCODE_RESET}"
