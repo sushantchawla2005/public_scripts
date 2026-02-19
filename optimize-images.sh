@@ -15,13 +15,31 @@ need_root() {
   fi
 }
 
+# Human size of a directory
+dir_size() { du -sh --apparent-size "$1" 2>/dev/null | awk '{print $1}'; }
+
+APT_UPDATED=0
+apt_update_once() {
+  if [[ "$APT_UPDATED" -eq 0 ]]; then
+    echo "[INFO] Updating apt cache..."
+    apt-get update -y >/dev/null 2>&1
+    APT_UPDATED=1
+  fi
+}
+
 apt_install_if_missing() {
   local pkg="$1" cmd="${2:-$1}"
   if have_cmd "$cmd"; then
     return 0
   fi
-  apt-get update -y
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg"
+
+  echo "[INFO] Installing package: $pkg (for '$cmd')"
+  apt_update_once
+  # hide install output; keep errors on failure
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" >/dev/null 2>&1 || {
+    echo "[ERROR] Failed installing package: $pkg"
+    exit 1
+  }
 }
 
 install_oxipng_if_missing() {
@@ -33,14 +51,15 @@ install_oxipng_if_missing() {
   echo "[INFO] oxipng missing. Downloading and installing v${OXP_VER} to /usr/local/bin/oxipng"
   apt_install_if_missing wget wget
   apt_install_if_missing tar tar
+  # update-ca-certificates is a command from ca-certificates; don't hard fail if it isn't needed
   apt_install_if_missing ca-certificates update-ca-certificates || true
 
-  # temp workspace (safe with set -u)
   tmp=""
   cleanup() { [[ -n "${tmp:-}" && -d "${tmp:-}" ]] && rm -rf "$tmp"; }
   trap cleanup EXIT
   tmp="$(mktemp -d)"
 
+  # keep wget progress (useful) but hide noisy apt
   wget -q --show-progress -O "${tmp}/${OXP_TAR}" "$OXP_URL"
   tar -xzf "${tmp}/${OXP_TAR}" -C "$tmp"
   install -m 0755 "${tmp}/${OXP_DIR}/oxipng" /usr/local/bin/oxipng
@@ -51,10 +70,16 @@ install_oxipng_if_missing() {
 main() {
   need_root
 
+  # Capture before size of current folder (.)
+  local before after
+  before="$(dir_size ".")"
+
   apt_install_if_missing jpegoptim jpegoptim
   apt_install_if_missing findutils find
   apt_install_if_missing coreutils nproc
-  apt_install_if_missing findutils xargs || true # xargs usually comes from findutils/coreutils depending on distro
+  # xargs usually available already; if missing, try findutils/coreutils depending on distro
+  apt_install_if_missing findutils xargs || true
+
   install_oxipng_if_missing
 
   echo "[INFO] Optimizing JPEGs under: ."
@@ -63,7 +88,10 @@ main() {
   echo "[INFO] Optimizing PNGs under: ."
   find ./ -type f -iname "*.png" -print0 | xargs -0 -P "$(nproc)" oxipng -o 3 --strip all --preserve
 
+  after="$(dir_size ".")"
+  echo -e ""
   echo "[DONE] Image optimization completed."
+  echo "Folder size: ${before} -> ${after}"
 }
 
 main "$@"
