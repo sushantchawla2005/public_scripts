@@ -83,6 +83,7 @@ main() {
   install_oxipng_if_missing
 
   echo "[INFO] Optimizing JPEGs under: ."
+  sleep 3
   find ./ -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -exec jpegoptim --strip-all --max=82 {} \;
 
   echo "[INFO] Optimizing PNGs under: ."
