@@ -4,6 +4,13 @@ set -euo pipefail
 GRUB_FILE="/etc/default/grub"
 BACKUP_FILE="/etc/default/grub.bak.$(date +%F_%H-%M-%S)"
 
+# journald retention (runtime, no reboot)
+JOURNALD_FILE="/etc/systemd/journald.conf"
+JOURNALD_BACKUP="/etc/systemd/journald.conf.bak.$(date +%F_%H-%M-%S)"
+JOURNALD_MAXUSE="500M"
+JOURNALD_STORAGE="persistent"
+PERSIST_DIR="/var/log/journal"
+
 # Boot-time params we want (applied after next reboot)
 REQUIRED_PARAMS=(
   "log_buf_len=64M"
@@ -26,7 +33,7 @@ if [[ ! -f "$GRUB_FILE" ]]; then
   exit 1
 fi
 
-# Backup
+# Backup GRUB
 cp -a "$GRUB_FILE" "$BACKUP_FILE"
 echo "[INFO] Backup created: $BACKUP_FILE"
 
@@ -68,8 +75,68 @@ update-grub
 echo "[INFO] update-grub completed"
 
 ###############################################################################
+# Runtime: Make journald persistent + increase retention (no reboot)
+###############################################################################
+echo
+echo "[INFO] Ensuring journald config: Storage=$JOURNALD_STORAGE, SystemMaxUse=$JOURNALD_MAXUSE in $JOURNALD_FILE ..."
+
+if [[ -f "$JOURNALD_FILE" ]]; then
+  cp -a "$JOURNALD_FILE" "$JOURNALD_BACKUP"
+  echo "[INFO] Backup created: $JOURNALD_BACKUP"
+else
+  echo "[WARN] $JOURNALD_FILE not found; creating it."
+  install -m 0644 /dev/null "$JOURNALD_FILE"
+fi
+
+set_or_add_journal_kv() {
+  local key="$1" val="$2" file="$3"
+
+  if grep -Eq "^[[:space:]]*#?[[:space:]]*${key}=" "$file"; then
+    # Replace existing (commented or uncommented)
+    sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}=.*|${key}=${val}|" "$file"
+    echo "[INFO] Updated existing ${key} line"
+  else
+    if grep -Eq '^\[Journal\][[:space:]]*$' "$file"; then
+      # Insert right after [Journal] (first occurrence)
+      sed -i -E "/^\[Journal\][[:space:]]*$/a ${key}=${val}" "$file"
+      echo "[INFO] Added ${key} under existing [Journal] section"
+    else
+      # Append minimal config section
+      {
+        echo
+        echo "[Journal]"
+        echo "${key}=${val}"
+      } >> "$file"
+      echo "[INFO] Added new [Journal] section with ${key}"
+    fi
+  fi
+}
+
+# Enforce both keys
+set_or_add_journal_kv "Storage" "$JOURNALD_STORAGE" "$JOURNALD_FILE"
+set_or_add_journal_kv "SystemMaxUse" "$JOURNALD_MAXUSE" "$JOURNALD_FILE"
+
+# Ensure persistent journal directory exists (systemd uses this for persistence)
+if [[ "$JOURNALD_STORAGE" == "persistent" ]]; then
+  if [[ ! -d "$PERSIST_DIR" ]]; then
+    echo "[INFO] Creating $PERSIST_DIR for persistent journald storage..."
+    mkdir -p "$PERSIST_DIR"
+    chmod 2755 "$PERSIST_DIR" || true
+    chown root:systemd-journal "$PERSIST_DIR" 2>/dev/null || true
+  fi
+fi
+
+echo "[INFO] Restarting systemd-journald..."
+systemctl restart systemd-journald
+echo "[INFO] systemd-journald restarted"
+
+echo "[INFO] Effective journald settings (from file):"
+grep -E '^[[:space:]]*(Storage|SystemMaxUse)=' "$JOURNALD_FILE" || true
+
+###############################################################################
 # Runtime (no reboot) SLUB checks on existing caches
 ###############################################################################
+echo
 echo "[INFO] Enabling runtime SLUB checks on /sys/kernel/slab/kmalloc-* (no reboot)..."
 
 SLAB_BASE="/sys/kernel/slab"
@@ -91,20 +158,17 @@ changed=0
 skipped=0
 
 for slab in "${slabs[@]}"; do
-  # Only operate on directories
   [[ -d "$slab" ]] || continue
 
   for knob in sanity_checks red_zone poison; do
     f="$slab/$knob"
     if [[ -w "$f" ]]; then
-      # If already 1, keep as-is
       cur="$(cat "$f" 2>/dev/null || echo "")"
       if [[ "$cur" == "1" ]]; then
         ((skipped++)) || true
         continue
       fi
 
-      # Try to enable
       if echo 1 > "$f" 2>/dev/null; then
         ((changed++)) || true
       else
@@ -128,4 +192,5 @@ if [[ -d "$SLAB_BASE/kmalloc-128" ]]; then
   done
 fi
 
-echo "[SUCCESS] Done. Boot-time params take effect after next reboot; runtime slab checks are enabled now."
+echo
+echo "[SUCCESS] Done. Boot-time params take effect after next reboot; journald is now persistent with higher retention; runtime slab checks are enabled now."
