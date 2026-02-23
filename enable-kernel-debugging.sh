@@ -15,7 +15,7 @@ PERSIST_DIR="/var/log/journal"
 REQUIRED_PARAMS=(
   "log_buf_len=64M"
   "slab_nomerge"
-  "slub_debug=FZP"
+  "slub_debug=FZPU"
   "page_poison=1"
   "ignore_loglevel"
 )
