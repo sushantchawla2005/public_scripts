@@ -46,10 +46,7 @@ get_grub_cmdline_default() {
   local file="$1"
   local line
   line="$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$file" || true)"
-  if [[ -z "$line" ]]; then
-    return 1
-  fi
-  # Extract current value inside quotes (supports empty string too)
+  [[ -n "$line" ]] || return 1
   echo "$line" | sed -E 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"$/\1/'
 }
 
@@ -59,6 +56,8 @@ set_grub_cmdline_default() {
   sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_value\"|" "$file"
 }
 
+log() { echo "$@" >&2; }
+
 # Ensure/replace a param in a cmdline string (space-separated tokens)
 # - For flags: ensure token exists once
 # - For key=value: replace any existing key=*, then ensure desired key=value exists once
@@ -66,54 +65,51 @@ ensure_param_in_cmdline() {
   local cmdline="$1"
   local param="$2"
 
-  # Normalize whitespace early
   cmdline="$(echo "$cmdline" | xargs)"
 
   if [[ "$param" == *"="* ]]; then
     local key="${param%%=*}"
+    local val="${param#*=}"
 
     # Remove any existing occurrences of key=... (avoid duplicates)
-    # Match token boundaries: start or space, then key=..., then end or space
     cmdline="$(echo " $cmdline " | sed -E "s/(^|[[:space:]])${key}=[^[:space:]]+([[:space:]]|$)/ /g")"
     cmdline="$(echo "$cmdline" | xargs)"
 
-    # Add desired key=value (once)
+    # Add desired key=value once
     if [[ " $cmdline " != *" $param "* ]]; then
       cmdline="$cmdline $param"
-      echo "[INFO] Set/updated GRUB param: $key -> ${param#*=}"
+      log "[INFO] Set/updated GRUB param: $key -> $val"
     else
-      echo "[OK] GRUB param already set: $param"
+      log "[OK] GRUB param already set: $param"
     fi
   else
     # Flag param
     if [[ " $cmdline " != *" $param "* ]]; then
       cmdline="$cmdline $param"
-      echo "[INFO] Added GRUB flag: $param"
+      log "[INFO] Added GRUB flag: $param"
     else
-      echo "[OK] GRUB flag already present: $param"
+      log "[OK] GRUB flag already present: $param"
     fi
   fi
 
-  # Normalize whitespace
   echo "$cmdline" | xargs
 }
 
 ###############################################################################
 # Update GRUB_CMDLINE_LINUX_DEFAULT safely
 ###############################################################################
-CURRENT_VALUE="$(get_grub_cmdline_default "$GRUB_FILE" || true)"
-if [[ -z "${CURRENT_VALUE+x}" ]] || ! grep -qE '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE"; then
+if ! grep -qE '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE"; then
   echo "[ERROR] GRUB_CMDLINE_LINUX_DEFAULT not found in $GRUB_FILE"
   exit 1
 fi
 
+CURRENT_VALUE="$(get_grub_cmdline_default "$GRUB_FILE")"
 NEW_VALUE="$CURRENT_VALUE"
 
 for param in "${REQUIRED_PARAMS[@]}"; do
   NEW_VALUE="$(ensure_param_in_cmdline "$NEW_VALUE" "$param")"
 done
 
-# Final normalize
 NEW_VALUE="$(echo "$NEW_VALUE" | xargs)"
 
 if [[ "$NEW_VALUE" != "$CURRENT_VALUE" ]]; then
@@ -123,7 +119,6 @@ else
   echo "[INFO] No GRUB changes needed"
 fi
 
-# Update grub.cfg
 echo "[INFO] Running update-grub..."
 update-grub
 echo "[INFO] update-grub completed"
@@ -146,16 +141,13 @@ set_or_add_journal_kv() {
   local key="$1" val="$2" file="$3"
 
   if grep -Eq "^[[:space:]]*#?[[:space:]]*${key}=" "$file"; then
-    # Replace existing (commented or uncommented)
     sed -i -E "s|^[[:space:]]*#?[[:space:]]*${key}=.*|${key}=${val}|" "$file"
     echo "[INFO] Updated existing ${key} line"
   else
     if grep -Eq '^\[Journal\][[:space:]]*$' "$file"; then
-      # Insert right after [Journal] (first occurrence)
       sed -i -E "/^\[Journal\][[:space:]]*$/a ${key}=${val}" "$file"
       echo "[INFO] Added ${key} under existing [Journal] section"
     else
-      # Append minimal config section
       {
         echo
         echo "[Journal]"
@@ -166,11 +158,9 @@ set_or_add_journal_kv() {
   fi
 }
 
-# Enforce both keys
 set_or_add_journal_kv "Storage" "$JOURNALD_STORAGE" "$JOURNALD_FILE"
 set_or_add_journal_kv "SystemMaxUse" "$JOURNALD_MAXUSE" "$JOURNALD_FILE"
 
-# Ensure persistent journal directory exists (systemd uses this for persistence)
 if [[ "$JOURNALD_STORAGE" == "persistent" ]]; then
   if [[ ! -d "$PERSIST_DIR" ]]; then
     echo "[INFO] Creating $PERSIST_DIR for persistent journald storage..."
@@ -236,7 +226,6 @@ done
 
 echo "[INFO] Runtime SLUB toggles: changed=$changed skipped=$skipped"
 
-# Show one cache as a quick proof (best-effort)
 if [[ -d "$SLAB_BASE/kmalloc-128" ]]; then
   echo "[INFO] kmalloc-128 status (best-effort):"
   for knob in sanity_checks red_zone poison; do
