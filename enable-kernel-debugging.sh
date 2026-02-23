@@ -20,10 +20,12 @@ REQUIRED_PARAMS=(
   "ignore_loglevel"
 )
 
-echo "[INFO] Updating $GRUB_FILE (idempotent, no duplicate params)..."
+echo "[INFO] Updating $GRUB_FILE (idempotent; replaces key=value params; no duplicates)..."
 
+###############################################################################
 # Sanity checks
-if [[ $EUID -ne 0 ]]; then
+###############################################################################
+if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
   echo "[ERROR] Run as root."
   exit 1
 fi
@@ -37,33 +39,85 @@ fi
 cp -a "$GRUB_FILE" "$BACKUP_FILE"
 echo "[INFO] Backup created: $BACKUP_FILE"
 
-# Read GRUB_CMDLINE_LINUX_DEFAULT
-CURRENT_LINE="$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE" || true)"
-if [[ -z "$CURRENT_LINE" ]]; then
+###############################################################################
+# Helpers for GRUB_CMDLINE_LINUX_DEFAULT
+###############################################################################
+get_grub_cmdline_default() {
+  local file="$1"
+  local line
+  line="$(grep -E '^GRUB_CMDLINE_LINUX_DEFAULT=' "$file" || true)"
+  if [[ -z "$line" ]]; then
+    return 1
+  fi
+  # Extract current value inside quotes (supports empty string too)
+  echo "$line" | sed -E 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"$/\1/'
+}
+
+set_grub_cmdline_default() {
+  local file="$1"
+  local new_value="$2"
+  sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"$new_value\"|" "$file"
+}
+
+# Ensure/replace a param in a cmdline string (space-separated tokens)
+# - For flags: ensure token exists once
+# - For key=value: replace any existing key=*, then ensure desired key=value exists once
+ensure_param_in_cmdline() {
+  local cmdline="$1"
+  local param="$2"
+
+  # Normalize whitespace early
+  cmdline="$(echo "$cmdline" | xargs)"
+
+  if [[ "$param" == *"="* ]]; then
+    local key="${param%%=*}"
+
+    # Remove any existing occurrences of key=... (avoid duplicates)
+    # Match token boundaries: start or space, then key=..., then end or space
+    cmdline="$(echo " $cmdline " | sed -E "s/(^|[[:space:]])${key}=[^[:space:]]+([[:space:]]|$)/ /g")"
+    cmdline="$(echo "$cmdline" | xargs)"
+
+    # Add desired key=value (once)
+    if [[ " $cmdline " != *" $param "* ]]; then
+      cmdline="$cmdline $param"
+      echo "[INFO] Set/updated GRUB param: $key -> ${param#*=}"
+    else
+      echo "[OK] GRUB param already set: $param"
+    fi
+  else
+    # Flag param
+    if [[ " $cmdline " != *" $param "* ]]; then
+      cmdline="$cmdline $param"
+      echo "[INFO] Added GRUB flag: $param"
+    else
+      echo "[OK] GRUB flag already present: $param"
+    fi
+  fi
+
+  # Normalize whitespace
+  echo "$cmdline" | xargs
+}
+
+###############################################################################
+# Update GRUB_CMDLINE_LINUX_DEFAULT safely
+###############################################################################
+CURRENT_VALUE="$(get_grub_cmdline_default "$GRUB_FILE" || true)"
+if [[ -z "${CURRENT_VALUE+x}" ]] || ! grep -qE '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB_FILE"; then
   echo "[ERROR] GRUB_CMDLINE_LINUX_DEFAULT not found in $GRUB_FILE"
   exit 1
 fi
 
-# Extract current value inside quotes (supports empty string too)
-CURRENT_VALUE="$(echo "$CURRENT_LINE" | sed -E 's/^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"$/\1/')"
 NEW_VALUE="$CURRENT_VALUE"
 
-# Add only missing params (avoid duplicates)
 for param in "${REQUIRED_PARAMS[@]}"; do
-  if [[ " $NEW_VALUE " != *" $param "* ]]; then
-    echo "[INFO] Adding missing GRUB param: $param"
-    NEW_VALUE="$NEW_VALUE $param"
-  else
-    echo "[OK] GRUB param already present: $param"
-  fi
+  NEW_VALUE="$(ensure_param_in_cmdline "$NEW_VALUE" "$param")"
 done
 
-# Normalize whitespace
+# Final normalize
 NEW_VALUE="$(echo "$NEW_VALUE" | xargs)"
 
-# Update file only if changed
 if [[ "$NEW_VALUE" != "$CURRENT_VALUE" ]]; then
-  sed -i -E "s|^GRUB_CMDLINE_LINUX_DEFAULT=\".*\"|GRUB_CMDLINE_LINUX_DEFAULT=\"$NEW_VALUE\"|" "$GRUB_FILE"
+  set_grub_cmdline_default "$GRUB_FILE" "$NEW_VALUE"
   echo "[INFO] Updated GRUB_CMDLINE_LINUX_DEFAULT"
 else
   echo "[INFO] No GRUB changes needed"
