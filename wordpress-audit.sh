@@ -112,11 +112,27 @@ ${COLORCODE_CYAN} Autoloaded options size: ${COLORCODE_RESET} ${AUTOLOAD_SIZE} K
     fi
 
     # Show Revisions and Orphaned data count
-    TOTAL_REVISIONS=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "SELECT COUNT(*) FROM ${PREFIX}posts WHERE post_type='revision';" --skip-column-names --raw 2>/dev/null)
+       TOTAL_REVISIONS=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "
+        SELECT COUNT(*)
+        FROM ${PREFIX}posts
+        WHERE post_type = 'revision';
+    " --skip-column-names --raw 2>/dev/null)
 
-    ORPHANED_POSTMETA=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "SELECT COUNT(*) FROM ${PREFIX}postmeta pm LEFT JOIN ${PREFIX}posts p ON p.ID = pm.post_id WHERE p.ID IS NULL;" --skip-column-names --raw 2>/dev/null)
+    ORPHANED_POSTMETA=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "
+        SELECT COUNT(*)
+        FROM ${PREFIX}postmeta pm
+        LEFT JOIN ${PREFIX}posts p ON p.ID = pm.post_id
+        WHERE p.ID IS NULL;
+    " --skip-column-names --raw 2>/dev/null)
 
-    ORPHANED_REVISIONS=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "SELECT COUNT(*) FROM ${PREFIX}posts r LEFT JOIN ${PREFIX}posts p ON p.ID = r.post_parent WHERE r.post_type='revision' AND r.post_parent<>0 AND p.ID IS NULL;" --skip-column-names --raw 2>/dev/null)
+    ORPHANED_REVISIONS=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "
+        SELECT COUNT(*)
+        FROM ${PREFIX}posts r
+        LEFT JOIN ${PREFIX}posts p ON p.ID = r.post_parent
+        WHERE r.post_type = 'revision'
+          AND r.post_parent <> 0
+          AND p.ID IS NULL;
+    " --skip-column-names --raw 2>/dev/null)
 
     [[ -z "$TOTAL_REVISIONS" || "$TOTAL_REVISIONS" == "NULL" ]] && TOTAL_REVISIONS=0
     [[ -z "$ORPHANED_POSTMETA" || "$ORPHANED_POSTMETA" == "NULL" ]] && ORPHANED_POSTMETA=0
