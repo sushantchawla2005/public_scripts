@@ -111,6 +111,16 @@ ${COLORCODE_CYAN} Autoloaded options size: ${COLORCODE_RESET} ${AUTOLOAD_SIZE} K
         echo -e "${COLORCODE_RED}⚠️ Autoloaded options exceed 1MB. Consider optimizing!${COLORCODE_RESET}"
     fi
 
+	# Show Revisions Count
+    TOTAL_REVISIONS=$(${TIMEOUT} ${WP} --url=${SITE_URL} db query "SELECT COUNT(*) FROM ${PREFIX}posts WHERE post_type='revision';" --skip-column-names --raw 2> /dev/null)
+
+        if [[ -z "$TOTAL_REVISIONS" || "$TOTAL_REVISIONS" == "NULL" ]]; then
+                TOTAL_REVISIONS=0
+        fi
+
+echo -e "
+${COLORCODE_CYAN} Total post/page revisions:${COLORCODE_RESET} ${TOTAL_REVISIONS}"
+
     sleep 1
     # Check Cron status
     echo -e "
@@ -153,7 +163,7 @@ fi
 
 # Image Optimization
 echo -e ""
-read -p "Do you want to run image optimization in current folder, it will use tools like oxipng and jpegoptim to optimize images? (y/n): " choice <&1
+read -p "Do you want to run image optimization in current folder, it will use tools like oxipng and jpegoptim to optimize images and depending upon number of images it may take longer? (y/n): " choice <&1
 if [ "$choice" == "y" ]; then
     curl -H 'Cache-Control: no-cache' -s https://raw.githubusercontent.com/sushantchawla2005/public_scripts/refs/heads/main/optimize-images.sh | bash
 fi
