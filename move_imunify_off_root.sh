@@ -157,14 +157,14 @@ EOF
 
 unit_exists() {
   local unit="$1"
-  sudo systemctl list-unit-files --type=service --type=socket --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$unit"
+  systemctl cat "$unit" >/dev/null 2>&1
 }
 
 restart_unit_safe() {
   local unit="$1"
 
   if unit_exists "$unit"; then
-    if sudo systemctl restart "$unit" 2>/dev/null; then
+    if systemctl restart "$unit" >/dev/null 2>&1; then
       log "Restarted $unit"
     else
       warn "Failed to restart $unit (ignored)"
@@ -205,7 +205,7 @@ restart_services() {
   done
 
   log "Starting monit"
-  sudo systemctl start monit || true
+  systemctl start monit || true
 }
 
 post_checks() {
