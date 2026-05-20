@@ -20,6 +20,24 @@ fail() {
   exit 1
 }
 
+get_latest_pkg() {
+  local pattern="$1"
+  local pkg
+
+  pkg="$(
+    apt-cache search "$pattern" \
+      | awk '{print $1}' \
+      | sort -V \
+      | tail -1
+  )"
+
+  if [[ -z "$pkg" ]]; then
+    fail "No package found for pattern: $pattern"
+  fi
+
+  echo "$pkg"
+}
+
 if [[ $EUID -ne 0 ]]; then
   fail "Please run this script as root."
 fi
@@ -78,26 +96,49 @@ apt update
 
 if [[ "$DEBIAN_VERSION" == "11" ]]; then
   if [[ "$IS_CLOUD_KERNEL_PROVIDER" -eq 1 ]]; then
-    log "Installing Debian 11 cloud kernel packages..."
-    apt-get install "${APT_OPTS[@]}" \
-      linux-image-6.1.0-0.deb11.48-cloud-amd64-unsigned \
-      linux-headers-6.1.0-0.deb11.48-cloud-amd64
+    log "Finding latest Debian 11 cloud kernel packages..."
+
+    IMAGE_PKG="$(
+      get_latest_pkg '^linux-image-6\.1\.0-0\.deb11\.[0-9]+-cloud-amd64-unsigned$'
+    )"
+
+    HEADERS_PKG="$(
+      get_latest_pkg '^linux-headers-6\.1\.0-0\.deb11\.[0-9]+-cloud-amd64$'
+    )"
+
+    log "Selected image package: $IMAGE_PKG"
+    log "Selected headers package: $HEADERS_PKG"
+
+    log "Installing Debian 11 latest cloud kernel packages..."
+    apt-get install "${APT_OPTS[@]}" "$IMAGE_PKG" "$HEADERS_PKG"
+
   else
-    log "Installing Debian 11 generic kernel packages..."
-    apt-get install "${APT_OPTS[@]}" \
-      linux-image-6.1.0-0.deb11.48-amd64-unsigned \
-      linux-headers-6.1.0-0.deb11.48-amd64
+    log "Finding latest Debian 11 generic kernel packages..."
+
+    IMAGE_PKG="$(
+      get_latest_pkg '^linux-image-6\.1\.0-0\.deb11\.[0-9]+-amd64-unsigned$'
+    )"
+
+    HEADERS_PKG="$(
+      get_latest_pkg '^linux-headers-6\.1\.0-0\.deb11\.[0-9]+-amd64$'
+    )"
+
+    log "Selected image package: $IMAGE_PKG"
+    log "Selected headers package: $HEADERS_PKG"
+
+    log "Installing Debian 11 latest generic kernel packages..."
+    apt-get install "${APT_OPTS[@]}" "$IMAGE_PKG" "$HEADERS_PKG"
   fi
 fi
 
 if [[ "$DEBIAN_VERSION" == "12" ]]; then
   if [[ "$IS_CLOUD_KERNEL_PROVIDER" -eq 1 ]]; then
-    log "Installing Debian 12 cloud kernel meta packages..."
+    log "Installing Debian 12 latest cloud kernel meta packages..."
     apt-get install "${APT_OPTS[@]}" \
       linux-image-cloud-amd64 \
       linux-headers-cloud-amd64
   else
-    log "Installing Debian 12 generic kernel meta packages..."
+    log "Installing Debian 12 latest generic kernel meta packages..."
     apt-get install "${APT_OPTS[@]}" \
       linux-image-amd64 \
       linux-headers-amd64
@@ -113,6 +154,9 @@ log "Done. Current running kernel is still:"
 uname -r
 
 log "Installed kernel packages:"
-dpkg -l 'linux-image*' 'linux-headers*' | awk '/^ii/{print $2, $3}' | sort -V | tail -20
+dpkg -l 'linux-image*' 'linux-headers*' \
+  | awk '/^ii/{print $2, $3}' \
+  | sort -V \
+  | tail -30
 
 log "Reboot is required to boot into the newly installed kernel."
