@@ -6,7 +6,7 @@ SERVICE_NAME="mariadb"
 DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
 DROPIN_FILE="${DROPIN_DIR}/oom-and-kill-policy.conf"
 
-OOM_SCORE="-800"
+#OOM_SCORE="-800"
 SEND_SIGKILL="yes"
 TIMEOUT_STOP="120"
 
