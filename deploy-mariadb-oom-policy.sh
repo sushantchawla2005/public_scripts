@@ -6,7 +6,6 @@ SERVICE_NAME="mariadb"
 DROPIN_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
 DROPIN_FILE="${DROPIN_DIR}/oom-and-kill-policy.conf"
 
-#OOM_SCORE="-800"
 SEND_SIGKILL="yes"
 TIMEOUT_STOP="120"
 
@@ -36,7 +35,6 @@ echo "MariaDB service found."
 mkdir -p "$DROPIN_DIR"
 
 if [ -f "$DROPIN_FILE" ] \
-   && grep -qx "OOMScoreAdjust=${OOM_SCORE}" "$DROPIN_FILE" \
    && grep -qx "SendSIGKILL=${SEND_SIGKILL}" "$DROPIN_FILE" \
    && grep -qx "TimeoutStopSec=${TIMEOUT_STOP}" "$DROPIN_FILE"; then
     echo "Required settings already exist in $DROPIN_FILE. No update needed."
@@ -49,7 +47,6 @@ else
 
     cat > "$DROPIN_FILE" <<EOF
 [Service]
-OOMScoreAdjust=${OOM_SCORE}
 SendSIGKILL=${SEND_SIGKILL}
 TimeoutStopSec=${TIMEOUT_STOP}
 EOF
