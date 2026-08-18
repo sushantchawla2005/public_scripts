@@ -101,6 +101,7 @@ test_site() {
     http_code="$(
         curl \
             --silent \
+            --insecure \
             --show-error \
             --location \
             --max-redirs 10 \
