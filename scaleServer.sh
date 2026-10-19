@@ -1,16 +1,15 @@
 #!/bin/bash
 
 # Check if required arguments are provided
-if [ "$#" -lt 4 ]; then
-	echo "Usage: $0 <email> <api_key> <server_id> <instance_type> [(Optional) slack_webhook_url]"
+if [ "$#" -lt 3 ]; then
+	echo "Usage: $0 <access_token> <server_id> <instance_type> [(Optional) slack_webhook_url]"
   exit 1
 fi
 
-EMAIL="$1"
-API_KEY="$2"
-SERVER_ID="$3"
-INSTANCE_TYPE="$4"
-SLACK_WEBHOOK="$5"
+ACCESS_TOKEN="$1"
+SERVER_ID="$2"
+INSTANCE_TYPE="$3"
+SLACK_WEBHOOK="$4"
 
 send_slack() {
   MESSAGE="$1"
@@ -22,16 +21,11 @@ send_slack() {
 }
 
 # Notify starting of server scaling
-send_slack "🛠️ Starting server scaling for email: $EMAIL, server ID: $SERVER_ID, instance type: $INSTANCE_TYPE. It may take upto 10 minutes to complete the operation."
+send_slack "🛠️ Starting server scaling for server ID: $SERVER_ID, instance type: $INSTANCE_TYPE. It may take upto 10 minutes to complete the operation."
 
-# Authenticate and get access token
-ACCESS_TOKEN=$(curl -s -X POST "https://api.cloudways.com/api/v1/oauth/access_token" \
-  -d "email=$EMAIL" \
-  -d "api_key=$API_KEY" | jq -r '.access_token')
-
-# Check if token retrieved successfully
+# Check if token provided
 if [ "$ACCESS_TOKEN" == "null" ] || [ -z "$ACCESS_TOKEN" ]; then
-  send_slack "❌ Authentication failed. Please check your email and API key."
+  send_slack "❌ Access token missing. Please provide a valid access token."
   exit 1
 fi
 
