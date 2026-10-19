@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Debian 12: ODBC 18 + sqlsrv/pdo_sqlsrv through version-specific PECL builds.
 # PECL compiles internally. Run as root during an appropriate maintenance window.
-set -Eeuo pipefail
-trap 'echo "ERROR at line $LINENO. Installation stopped; earlier versions may already be installed/reloaded." >&2' ERR
+set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo 'Run as root.' >&2; exit 1; }
 source /etc/os-release
@@ -38,19 +37,20 @@ apt-get install -y "${deps[@]}"
 
 PECL_BIN=$(command -v pecl)
 command -v phpenmod >/dev/null
-for ver in "${PHP_VERSIONS[@]}"; do
-    for tool in phpize php-config; do
+process_version() {
+    local ver="$1"
+    local tool actual release php_bin ext_dir registry ext ini sapi
+    local archive_dir archive fpm_info installed_any=0
+    local -a pecl_args
+    for tool in php phpize php-config; do
         [[ -x "/usr/bin/${tool}${ver}" ]] || {
-            echo "Missing /usr/bin/${tool}${ver}" >&2; exit 1;
+            echo "Missing /usr/bin/${tool}${ver}" >&2; return 1;
         }
     done
     actual=$(/usr/bin/php-config"$ver" --version)
     [[ "$actual" == "$ver".* ]] || {
-        echo "php-config${ver} reports unexpected version: $actual" >&2; exit 1;
+        echo "php-config${ver} reports unexpected version: $actual" >&2; return 1;
     }
-done
-
-for ver in "${PHP_VERSIONS[@]}"; do
     case "$ver" in
         7.4|8.0) release=5.10.1 ;;
         8.1|8.2|8.3) release=5.12.0 ;;
@@ -60,35 +60,28 @@ for ver in "${PHP_VERSIONS[@]}"; do
     php_bin="/usr/bin/php${ver}"
     ext_dir=$(/usr/bin/php-config"$ver" --extension-dir)
     registry="/var/lib/pecl-multiphp/${ver}"
-    mkdir -p "$registry"
+    mkdir -p "$registry/php" "$registry/metadata"
 
     # Per-command overrides; no update-alternatives or global PEAR config changes.
-    # php_dir provides a separate PECL registry for each PHP version.
+    # metadata_dir MUST be isolated too: Debian can configure a shared registry.
     pecl_args=(
         -d "php_bin=$php_bin"
         -d 'php_prefix=/usr/bin/'
         -d "php_suffix=$ver"
         -d "ext_dir=$ext_dir"
-        -d "php_dir=$registry"
+        -d "php_dir=$registry/php"
+        -d "metadata_dir=$registry/metadata"
         -d 'php_ini='
     )
     for ext in sqlsrv pdo_sqlsrv; do
-        # Download separately: avoid the channel-update XML request that failed.
-        archive_dir=$(mktemp -d /var/tmp/pecl-sqlsrv.XXXXXX)
-        archive="$archive_dir/${ext}-${release}.tgz"
-        curl --fail --show-error --location --retry 3 \
-            "https://pecl.php.net/get/${ext}-${release}.tgz" -o "$archive"
-        # Reject an HTML/error response before passing the archive to PECL.
-        tar -tzf "$archive" >/dev/null
-        # Force allows a repeat run to rebuild the pinned release.
-        # /dev/null accepts the extensions' default configure answers.
-        env PHP_PEAR_PHP_BIN="$php_bin" "$PECL_BIN" "${pecl_args[@]}" \
-            install -f "$archive" </dev/null
-        rm -rf -- "$archive_dir"
-
-        [[ -s "$ext_dir/$ext.so" ]] || {
-            echo "Missing installed module: $ext_dir/$ext.so" >&2; exit 1;
-        }
+        # A shared/channel-specific registry can override the directory settings.
+        # Forget only the registration, NEVER remove installed module files.
+        if env PHP_PEAR_PHP_BIN="$php_bin" "$PECL_BIN" "${pecl_args[@]}" \
+            info "pecl.php.net/$ext" >/dev/null 2>&1; then
+            env PHP_PEAR_PHP_BIN="$php_bin" "$PECL_BIN" "${pecl_args[@]}" \
+                uninstall --register-only "pecl.php.net/$ext"
+        fi
+        # Enable configuration first: an installed but disabled module needs no rebuild.
         ini="/etc/php/${ver}/mods-available/${ext}.ini"
         mkdir -p "$(dirname "$ini")"
         if [[ ! -e "$ini" ]]; then
@@ -99,6 +92,26 @@ for ver in "${PHP_VERSIONS[@]}"; do
                 phpenmod -v "$ver" -s "$sapi" "$ext"
             fi
         done
+
+        # Check the actual PHP runtime, not the PECL registry or just the INI file.
+        if "$php_bin" -r 'exit(extension_loaded($argv[1]) ? 0 : 1);' "$ext" 2>/dev/null; then
+            echo "SKIP PHP $ver: $ext already loads successfully."
+            continue
+        fi
+
+        archive_dir=$(mktemp -d /var/tmp/pecl-sqlsrv.XXXXXX)
+        archive="$archive_dir/${ext}-${release}.tgz"
+        curl --fail --show-error --location --retry 3 \
+            "https://pecl.php.net/get/${ext}-${release}.tgz" -o "$archive"
+        tar -tzf "$archive" >/dev/null
+        env PHP_PEAR_PHP_BIN="$php_bin" "$PECL_BIN" "${pecl_args[@]}" \
+            install "$archive" </dev/null
+        # Prevent later PECL installs from treating this binary as replaceable.
+        env PHP_PEAR_PHP_BIN="$php_bin" "$PECL_BIN" "${pecl_args[@]}" \
+            uninstall --register-only "pecl.php.net/$ext"
+        rm -rf -- "$archive_dir"
+        installed_any=1
+        "$php_bin" -r 'exit(extension_loaded($argv[1]) ? 0 : 1);' "$ext"
     done
 
     "$php_bin" -r '
@@ -112,7 +125,7 @@ for ver in "${PHP_VERSIONS[@]}"; do
             fwrite(STDERR, "SQL Server PDO driver missing\n"); exit(1);
         }
     '
-    if [[ -d "/etc/php/${ver}/fpm" ]]; then
+    if systemctl is-active --quiet "php${ver}-fpm"; then
         "/usr/sbin/php-fpm${ver}" -t
         # Confirm both modules load under the FPM configuration as well.
         fpm_info=$("/usr/sbin/php-fpm${ver}" -i)
@@ -121,11 +134,67 @@ for ver in "${PHP_VERSIONS[@]}"; do
                 echo "PHP $ver FPM: $ext is not enabled." >&2; exit 1;
             fi
         done
-        if systemctl is-active --quiet "php${ver}-fpm"; then
-            systemctl reload "php${ver}-fpm"
-        fi
+        systemctl reload "php${ver}-fpm"
+    else
+        echo "PHP $ver FPM is inactive: skipping pool validation and reload."
     fi
-    echo "=== PHP $ver completed ==="
+    if (( installed_any )); then
+        echo "=== PHP $ver: missing drivers installed and verified ==="
+    else
+        echo "=== PHP $ver: drivers already available; configuration verified ==="
+    fi
+}
+
+failed=()
+passed=()
+for ver in "${PHP_VERSIONS[@]}"; do
+    # Run as an unguarded subshell so errexit remains effective inside the function.
+    # Capture its exit status in the parent and continue with the next PHP version.
+    set +e
+    (
+        set -euo pipefail
+        process_version "$ver"
+    )
+    status=$?
+    set -e
+    if (( status == 0 )); then
+        passed+=("$ver")
+    else
+        failed+=("$ver")
+        echo "FAILED PHP $ver (exit $status); continuing with remaining versions." >&2
+    fi
 done
 
+# Recheck ALL runtimes after the last install, catching cross-version file removal.
+echo '=== Final verification after all PECL installations ==='
+for ver in "${PHP_VERSIONS[@]}"; do
+    if ! "/usr/bin/php${ver}" -r '
+        foreach (["sqlsrv", "pdo_sqlsrv"] as $ext) {
+            if (!extension_loaded($ext)) {
+                fwrite(STDERR, PHP_VERSION." missing ".$ext.PHP_EOL); exit(1);
+            }
+        }
+        if (!in_array("sqlsrv", PDO::getAvailableDrivers(), true)) { exit(1); }
+        echo PHP_VERSION." sqlsrv=".phpversion("sqlsrv").
+            " pdo_sqlsrv=".phpversion("pdo_sqlsrv").PHP_EOL;
+    '; then
+        # Keep each failed version listed only once.
+        if [[ " ${failed[*]} " != *" $ver "* ]]; then
+            failed+=("$ver")
+        fi
+    fi
+done
+
+# Report success only for versions that also survived final verification.
+verified=()
+for ver in "${passed[@]}"; do
+    if [[ " ${failed[*]} " != *" $ver "* ]]; then
+        verified+=("$ver")
+    fi
+done
+printf '\nSuccessful PHP versions: %s\n' "${verified[*]:-none}"
+if (( ${#failed[@]} )); then
+    printf 'Failed PHP versions: %s\n' "${failed[*]}" >&2
+    exit 1
+fi
 echo 'All six PHP versions completed. Test a real SQL Server connection next.'
