@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Debian/Cloudways Linux x86-64. Bash + standard Linux utilities; no Python.
+# Author: Sushant Chawla
+# Last Updated: 5 Nov' 2026
+# Debian/Cloudways Linux x86-64. Bash + standard Linux utilities; 
 # Updates existing loader references only. Never creates/deletes/enables an INI.
 set -Eeuo pipefail
 export LC_ALL=C
