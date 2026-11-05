@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Run on the Cloudways server as root. Requires curl, jq, mysql and Shorewall.
-# Usage: bash cloudways-snapshooter-setup.sh SNAPSHOOTER_TOKEN CLOUDWAYS_TOKEN
-# MySQL password: MYSQL_BACKUP_PASSWORD environment variable or hidden prompt.
-# Optional: MYSQL_DEFAULTS_FILE, RECIPE_ID, SOURCE_SCHEDULE_ID, DRY_RUN=1.
+# Usage: bash cloudways-snapshooter-setup.sh [SNAPSHOOTER_TOKEN CLOUDWAYS_TOKEN]
+# Environment: SNAPSHOOTER_TOKEN, CW_TOKEN (or CLOUDWAYS_TOKEN),
+# MYSQL_BACKUP_PASSWORD, SSH_KEY_ID, STORAGE_ID, STORAGE_BUCKET, SOURCE_SCHEDULE_ID.
+# Missing values are prompted via /dev/tty, including when piped into bash.
+# Optional: MYSQL_DEFAULTS_FILE, RECIPE_ID, DRY_RUN=1.
 # DRY_RUN performs API reads only, without server/account mutations.
 set +x
 set -Eeuo pipefail
@@ -11,11 +13,42 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 log() { echo "$*" >&2; }
 STEP=0
 step() { STEP=$((STEP + 1)); log "[$STEP] $*"; sleep 1; }
-[[ $# == 2 ]] || die 'Usage: bash cloudways-snapshooter-setup.sh SNAPSHOOTER_TOKEN CLOUDWAYS_TOKEN'
-[[ -n $1 && -n $2 ]] || die 'Both token arguments must be non-empty.'
-SNAPSHOOTER_TOKEN=$1
-CW_TOKEN=$2
+[[ $# == 0 || $# == 2 ]] || die 'Usage: bash cloudways-snapshooter-setup.sh [SNAPSHOOTER_TOKEN CLOUDWAYS_TOKEN]'
+if [[ $# == 2 ]]; then
+  SNAPSHOOTER_TOKEN=$1
+  CW_TOKEN=$2
+else
+  SNAPSHOOTER_TOKEN=${SNAPSHOOTER_TOKEN:-}
+  CW_TOKEN=${CW_TOKEN:-${CLOUDWAYS_TOKEN:-}}
+fi
 [[ $EUID == 0 ]] || die 'Run as root on the target Cloudways server.'
+# Never read prompts from stdin: it may contain the rest of this script.
+get_setting() {
+  local name=$1 label=$2 hidden=${3:-0}
+  [[ -z ${!name:-} ]] || return 0
+  if [[ $hidden == 1 ]]; then
+    if ! IFS= read -r -s -p "$label: " "$name" < /dev/tty; then
+      die "Set $name in the environment when no interactive terminal is available."
+    fi
+    printf '\n' >&2
+  else
+    if ! IFS= read -r -p "$label: " "$name" < /dev/tty; then
+      die "Set $name in the environment when no interactive terminal is available."
+    fi
+  fi
+  [[ -n ${!name:-} ]] || die "$name is empty."
+}
+get_setting SNAPSHOOTER_TOKEN 'SnapShooter API token (hidden)' 1
+get_setting CW_TOKEN 'Cloudways access token (hidden)' 1
+get_setting MYSQL_BACKUP_PASSWORD 'MySQL backup password (hidden)' 1
+get_setting SSH_KEY_ID 'SnapShooter SSH key ID'
+get_setting STORAGE_ID 'SnapShooter storage ID'
+get_setting STORAGE_BUCKET 'SnapShooter storage bucket'
+get_setting SOURCE_SCHEDULE_ID 'Source schedule ID'
+for setting in SSH_KEY_ID STORAGE_ID SOURCE_SCHEDULE_ID; do
+  [[ ${!setting} =~ ^[1-9][0-9]*$ ]] || die "$setting must be a positive integer without leading zeros."
+done
+[[ $STORAGE_BUCKET != *$'\n'* && $STORAGE_BUCKET != *$'\r'* ]] || die 'Storage bucket contains a newline.'
 step 'Checking required commands and setup lock...'
 for cmd in curl jq mysql mysqldump gzip flock getent awk shorewall ssh-keygen; do
   command -v "$cmd" >/dev/null || die "Missing dependency: $cmd"
@@ -26,20 +59,13 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 trap 'log "Stopped at line $LINENO. Earlier changes may remain; resolve the error and rerun. No automatic rollback of API resources."' ERR
 DRY_RUN=${DRY_RUN:-0}
-SOURCE_SCHEDULE_ID=${SOURCE_SCHEDULE_ID:-358286}
-SSH_KEY_ID=24853
-STORAGE_ID=26761
 MYSQL_USER=snapshooter-backup
 MACRO=/etc/shorewall/macro.ALLOW_SSH
-if [[ -z ${MYSQL_BACKUP_PASSWORD:-} ]]; then
-  read -rsp 'MySQL password for snapshooter-backup (hidden): ' MYSQL_BACKUP_PASSWORD
-  echo >&2
-fi
 [[ -n $MYSQL_BACKUP_PASSWORD ]] || die 'MYSQL_BACKUP_PASSWORD is empty.'
 # Password restricted to these characters so SQL and MySQL option-file escaping
-# are unambiguous. The supplied password meets this requirement.
+# are unambiguous.
 [[ $MYSQL_BACKUP_PASSWORD =~ ^[a-zA-Z0-9._@%+=:-]+$ ]] || die 'Use an alphanumeric password or ._@%+=:- characters.'
-[[ $CW_TOKEN != *$'\n'* && $SNAPSHOOTER_TOKEN != *$'\n'* ]] || die 'Token contains a newline.'
+[[ $CW_TOKEN != *$'\n'* && $CW_TOKEN != *$'\r'* && $SNAPSHOOTER_TOKEN != *$'\n'* && $SNAPSHOOTER_TOKEN != *$'\r'* ]] || die 'Token contains a newline.'
 printf 'Authorization: Bearer %s\n' "$CW_TOKEN" >"$TMP/cw.header"
 printf 'Authorization: Bearer %s\n' "$SNAPSHOOTER_TOKEN" >"$TMP/ss.header"
 SS=https://api.snapshooter.com/v1
@@ -118,8 +144,8 @@ log "    Master user: $MASTER_USER | Local MySQL access: OK"
 step "Checking SnapShooter SSH key $SSH_KEY_ID..."
 ss_list 'ssh-keys' "$TMP/keys.json"
 jq --arg id "$SSH_KEY_ID" '[.[] | select((.id|tostring)==$id)]' "$TMP/keys.json" >"$TMP/key.json"
-[[ $(jq length "$TMP/key.json") == 1 ]] || die 'SSH key 24853 was not found uniquely in this team.'
-# Fetch the actual public key for ID 24853 instead of embedding a potentially
+[[ $(jq length "$TMP/key.json") == 1 ]] || die "SSH key $SSH_KEY_ID was not found uniquely in this team."
+# Fetch the actual public key for the selected ID instead of embedding a potentially
 # stale copy. This is the key used for the server registration below.
 PUBLIC_KEY=$(jq -er '.[0].public_key | select(startswith("ssh-rsa "))' "$TMP/key.json")
 [[ $PUBLIC_KEY != *$'\n'* ]] || die 'Unexpected multiline SSH key.'
@@ -150,9 +176,9 @@ SNAPSHOOTER_IMAGE=$(jq -er '
   | .[0] // empty
 ' "$TMP/recipe.json") || die 'No default SnapShooter image found in the mysql-all recipe.'
 log "    SnapShooter image: $SNAPSHOOTER_IMAGE"
-step "Checking backup storage: tesaegroup-backup (ID $STORAGE_ID)..."
+step "Checking backup storage: $STORAGE_BUCKET (ID $STORAGE_ID)..."
 ss_list storage "$TMP/storage.json"
-jq -e --arg id "$STORAGE_ID" 'any(.[]; (.id|tostring)==$id and .bucket=="tesaegroup-backup")' "$TMP/storage.json" >/dev/null || die 'Storage ID/bucket mismatch.'
+jq -e --arg id "$STORAGE_ID" --arg bucket "$STORAGE_BUCKET" 'any(.[]; (.id|tostring)==$id and .bucket==$bucket)' "$TMP/storage.json" >/dev/null || die 'Storage ID/bucket mismatch.'
 step "Reading backup jobs and source schedule $SOURCE_SCHEDULE_ID..."
 ss_list 'jobs?page_size=100' "$TMP/jobs.json"
 jq --arg id "$SOURCE_SCHEDULE_ID" '[.[] | (.schedule // .schedules // [])[] | select((.id|tostring)==$id)]' "$TMP/jobs.json" >"$TMP/source.json"
