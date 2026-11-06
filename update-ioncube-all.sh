@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Author: Sushant Chawla
-# Last Updated: 5 Nov' 2026
-# Debian/Cloudways Linux x86-64. Bash + standard Linux utilities; 
+# Last Updated: 6 Nov' 2026
+# Debian/Cloudways Linux x86-64. Bash + standard Linux utilities;
 # Updates existing loader references only. Never creates/deletes/enables an INI.
 set -Eeuo pipefail
 export LC_ALL=C
@@ -17,7 +17,6 @@ exec 9>/run/lock/update-ioncube-all.lock
 flock -n 9 || die 'Another ionCube updater is running.'
 work=$(mktemp -d /tmp/update-ioncube.XXXXXXXX)
 backup="/var/backups/ioncube/$(date -u +%Y%m%dT%H%M%S)-$$"
-install -d -m 0700 "$backup"
 declare -a changed=() restart_attempted=() summaries=() planned=() services=()
 declare -A saved=() existed=() config_new=() loader_new=() expected_cli=()
 transaction=0
@@ -47,6 +46,7 @@ normalize() {
 remember() {
     local path=$1
     [[ ${saved[$path]+yes} ]] && return 0
+    install -d -m 0700 "$backup"
     saved["$path"]=1
     if [[ -e $path ]]; then
         existed["$path"]=1
@@ -114,7 +114,7 @@ plan_version() {
     local path real state oldpath name loader_v old new candidate service enabled count
     local -a files=() live=() state_notes=() old_notes=() local_services=()
     local -A seen=() names=() edits=() candidates=() new_versions=()
-    local cli_enabled=0
+    local cli_enabled=0 loader_changes=0
     log "Checking PHP $v..."
     find -L "$root" -type f -name '*.ini' -print0 > "$work/files-$v" || return 1
     while IFS= read -r -d '' path; do
@@ -199,8 +199,22 @@ plan_version() {
             edits["$path"]=$candidate
         fi
     done
+    # Skip identical loader binaries; version strings alone can hide rebuilds.
+    for name in "${!candidates[@]}"; do
+        if ! cmp -s -- "${candidates[$name]}" "/usr/local/ioncube/$name"; then
+            loader_changes=$((loader_changes+1))
+        fi
+    done
+    if (( loader_changes == 0 && ${#edits[@]} == 0 )); then
+        summaries+=("PHP $v: ${state_notes[*]} | UNCHANGED — loader ${!new_versions[*]} already installed; no backup or restart")
+        return 0
+    fi
     # Merge only fully validated plans.
-    for name in "${!candidates[@]}"; do loader_new["/usr/local/ioncube/$name"]=${candidates[$name]}; done
+    for name in "${!candidates[@]}"; do
+        if ! cmp -s -- "${candidates[$name]}" "/usr/local/ioncube/$name"; then
+            loader_new["/usr/local/ioncube/$name"]=${candidates[$name]}
+        fi
+    done
     for path in "${!edits[@]}"; do config_new["$path"]=${edits[$path]}; done
     expected_cli["$v"]=$cli_enabled
     planned+=("$v")
@@ -260,6 +274,10 @@ success=1
 log ''
 log 'RESULTS'
 printf '%s\n' "${summaries[@]}"
-log "Backups: $backup"
+if (( ${#changed[@]} )); then
+    log "Backups: $backup"
+else
+    log 'No changes required; no backups created or services restarted.'
+fi
 log 'No INI files created or deleted. Comments and enabled states preserved.'
 (( failures == 0 ))
