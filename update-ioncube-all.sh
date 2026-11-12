@@ -1,33 +1,49 @@
 #!/usr/bin/env bash
 # Author: Sushant Chawla
-# Last Updated: 6 Nov' 2026
+# Last Updated: 12 Nov' 2026
 # Debian/Cloudways Linux x86-64. Bash + standard Linux utilities;
 # Default: stage all loaders; update INIs only for enabled versions.
 # update-all: stage all loaders and normalize every existing ionCube INI.
 # enable-all: update loaders and enable ionCube for installed CLI/FPM SAPIs.
+# PHP version (e.g. 7.4): update and enable only that installed version.
 set -Eeuo pipefail
 export LC_ALL=C
 
 log() { printf '%s\n' "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 usage() {
-    log 'Usage: bash update-ioncube-all.sh [update-all|enable-all]'
+    log 'Usage: bash update-ioncube-all.sh [update-all|enable-all|PHP_VERSION]'
     log 'No argument: stage all loaders; update INIs only where ionCube is enabled in CLI/FPM.'
     log 'update-all: update loaders for all installed PHP versions; retain enabled states.'
     log 'enable-all: update loaders and enable ionCube for all installed CLI/FPM SAPIs.'
+    log 'PHP_VERSION: update the loader and enable ionCube only for that installed version (e.g. 7.4).'
 }
 (( $# <= 1 )) || { usage; exit 1; }
 mode=${1:-default}
+target_version=
 case $mode in
     default|update-all|enable-all) ;;
     -h|--help) usage; exit 0;;
-    *) usage; die "Unknown mode: $mode";;
+    *)
+        if [[ $mode =~ ^(7\.([4-9]|[1-9][0-9]+)|[89]\.[0-9]+|[1-9][0-9]+\.[0-9]+)$ ]]; then
+            target_version=$mode
+            mode=enable-all
+        else
+            usage
+            die "Unknown mode or unsupported PHP version: $mode"
+        fi
+        ;;
 esac
 [[ $EUID -eq 0 ]] || die "Run: sudo bash $0"
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || die 'Requires Linux x86-64.'
 for cmd in curl unzip awk sed find sort readlink mktemp cp mv cmp flock systemctl install cat date rm mkdir ln grep; do
     command -v "$cmd" >/dev/null || die "Missing command: $cmd"
 done
+if [[ -n $target_version ]]; then
+    root="/etc/php/$target_version"
+    [[ -d $root && -x /usr/bin/php$target_version ]] || die "PHP $target_version is not installed."
+    [[ -d $root/cli || -d $root/fpm ]] || die "PHP $target_version has no CLI or FPM configuration."
+fi
 exec 9>/run/lock/update-ioncube-all.lock
 flock -n 9 || die 'Another ionCube updater is running.'
 work=$(mktemp -d /tmp/update-ioncube.XXXXXXXX)
@@ -303,15 +319,19 @@ plan_version() {
     summaries+=("PHP $v: ${state_notes[*]} | OLD: ${old_notes[*]:-DISABLED} -> NEW: $new")
 }
 
-log "Mode: $mode"
+log "Mode: ${target_version:-$mode}"
 log 'Downloading official ionCube archive...'
 curl --fail --location --silent --show-error --retry 3 --connect-timeout 15 --max-time 180 \
     'https://downloads.ioncube.com/loader_downloads/ioncube_loaders_lin_x86-64.zip' -o "$work/loaders.zip"
 unzip -tq "$work/loaders.zip" >/dev/null
-find /etc/php -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V > "$work/versions"
+if [[ -n $target_version ]]; then
+    printf '%s\n' "$target_version" > "$work/versions"
+else
+    find /etc/php -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V > "$work/versions"
+fi
 for v in $(cat "$work/versions"); do
     [[ $v =~ ^([0-9]+)\.([0-9]+)$ ]] || continue
-    (( BASH_REMATCH[1] > 7 || (BASH_REMATCH[1] == 7 && BASH_REMATCH[2] >= 4) )) || continue
+    (( 10#${BASH_REMATCH[1]} > 7 || (10#${BASH_REMATCH[1]} == 7 && 10#${BASH_REMATCH[2]} >= 4) )) || continue
     [[ -x /usr/bin/php$v ]] || continue
     if ! plan_version "$v"; then
         summaries+=("PHP $v: FAILED — validation failed; unchanged")
